@@ -1,2 +1,5 @@
-# dinghy
-Lightweight and simplistic Raft implementation
+# HashiConf Raft
+
+A minimal example of using HashiCorp Raft.
+
+TODO: Documentation.
