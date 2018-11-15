@@ -1,5 +1,3 @@
-# HashiConf Raft
+# Dinghy
 
-A minimal example of using HashiCorp Raft.
-
-TODO: Documentation.
+Thanks to [jen20](github.com/jen20) for writing the [barebones implementation](github.com/jen20/hashiconf-raft) this is based on.
