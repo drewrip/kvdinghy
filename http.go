@@ -4,9 +4,8 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
-	"strings"
 	"time"
-
+	"fmt"
 	"github.com/hashicorp/raft"
 	"github.com/justinas/alice"
 	"github.com/rs/zerolog"
@@ -44,100 +43,143 @@ func (server *httpServer) Start() {
 }
 
 func (server *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if strings.Contains(r.URL.Path, "/key") {
-		server.handleRequest(w, r)
-	} else if strings.Contains(r.URL.Path, "/join") {
-		server.handleJoin(w, r)
-	} else {
+	switch r.URL.Path{
+
+
+
+	// GET
+	case "/get":
+		if r.Method != http.MethodGet{
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			break
+		}
+		
+			w.WriteHeader(http.StatusOK)
+			getKey := struct {
+				Key string `json:"key"`
+			}{}
+
+			if err := json.NewDecoder(r.Body).Decode(&getKey); err != nil {
+				server.logger.Error().Err(err).Msg("Bad request")
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+
+			response := struct {
+				Value int `json:"value"`
+			}{
+				Value: server.node.fsm.KV[getKey.Key],
+			}
+
+			responseBytes, err := json.Marshal(response)
+			if err != nil {
+				server.logger.Error().Err(err).Msg("")
+			}
+
+			w.Write(responseBytes)
+
+
+
+
+
+
+	// GET
+	case "/dump":
+		if r.Method != http.MethodGet{
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			break
+		}
+		
+		w.WriteHeader(http.StatusOK)
+
+		allentries := []keyval{}
+		for k,v := range server.node.fsm.KV{
+			allentries = append(allentries, keyval{Key: k, Value: v})
+		}
+
+		responseBytes, err := json.Marshal(allentries)
+		if err != nil {
+			server.logger.Error().Err(err).Msg("")
+		}
+
+		w.Write(responseBytes)
+
+
+
+
+
+
+	// POST
+	case "/set":
+		if r.Method != http.MethodPost{
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			break
+		}
+		if server.node.raftNode.State() != raft.Leader{
+			fmt.Println("I need to forward this message")
+		}
+			request := keyval{}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			server.logger.Error().Err(err).Msg("Bad request")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		r.Body.Close()
+		event := &event{
+			Key: request.Key,
+			Value: request.Value,
+		}
+
+		eventBytes, err := json.Marshal(event)
+		if err != nil {
+			server.logger.Error().Err(err).Msg("")
+		}
+
+		applyFuture := server.node.raftNode.Apply(eventBytes, 5*time.Second)
+		if err := applyFuture.Error(); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+
+
+
+
+
+
+	// POST (Made in main.go)
+	case "/join":
+		if r.Method != http.MethodPost{
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			break
+		}
+		peerAddress := r.Header.Get("Peer-Address")
+		if peerAddress == "" {
+			server.logger.Error().Msg("Peer-Address not set on request")
+			w.WriteHeader(http.StatusBadRequest)
+		}
+
+		addPeerFuture := server.node.raftNode.AddVoter(
+			raft.ServerID(peerAddress), raft.ServerAddress(peerAddress), 0, 0)
+		if err := addPeerFuture.Error(); err != nil {
+			server.logger.Error().
+				Err(err).
+				Str("peer.remoteaddr", peerAddress).
+				Msg("Error joining peer to Raft")
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		server.logger.Info().Str("peer.remoteaddr", peerAddress).Msg("Peer joined Raft")
+		w.WriteHeader(http.StatusOK)
+
+
+
+
+
+
+	default:
 		w.WriteHeader(http.StatusBadRequest)
 	}
-}
-
-func (server *httpServer) handleRequest(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodPost:
-		server.handleKeyPost(w, r)
-		return
-	case http.MethodGet:
-		server.handleKeyGet(w, r)
-		return
-	}
-	w.WriteHeader(http.StatusMethodNotAllowed)
-}
-
-func (server *httpServer) handleKeyPost(w http.ResponseWriter, r *http.Request) {
-	request := keyval{}
-	defer r.Body.Close()
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		server.logger.Error().Err(err).Msg("Bad request")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	event := &event{
-		Type:  "set",
-		Key: request.Key,
-		Value: request.Value,
-	}
-
-	eventBytes, err := json.Marshal(event)
-	if err != nil {
-		server.logger.Error().Err(err).Msg("")
-	}
-
-	applyFuture := server.node.raftNode.Apply(eventBytes, 5*time.Second)
-	if err := applyFuture.Error(); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-}
-
-func (server *httpServer) handleKeyGet(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	getKey := struct {
-		Key string `json:"key"`
-	}{}
-
-	if err := json.NewDecoder(r.Body).Decode(&getKey); err != nil {
-		server.logger.Error().Err(err).Msg("Bad request")
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	response := struct {
-		Value int `json:"value"`
-	}{
-		Value: server.node.fsm.KV[getKey.Key],
-	}
-
-	responseBytes, err := json.Marshal(response)
-	if err != nil {
-		server.logger.Error().Err(err).Msg("")
-	}
-
-	w.Write(responseBytes)
-}
-
-func (server *httpServer) handleJoin(w http.ResponseWriter, r *http.Request) {
-	peerAddress := r.Header.Get("Peer-Address")
-	if peerAddress == "" {
-		server.logger.Error().Msg("Peer-Address not set on request")
-		w.WriteHeader(http.StatusBadRequest)
-	}
-
-	addPeerFuture := server.node.raftNode.AddVoter(
-		raft.ServerID(peerAddress), raft.ServerAddress(peerAddress), 0, 0)
-	if err := addPeerFuture.Error(); err != nil {
-		server.logger.Error().
-			Err(err).
-			Str("peer.remoteaddr", peerAddress).
-			Msg("Error joining peer to Raft")
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	server.logger.Info().Str("peer.remoteaddr", peerAddress).Msg("Peer joined Raft")
-	w.WriteHeader(http.StatusOK)
 }

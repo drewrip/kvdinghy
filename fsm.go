@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"sync"
 	"github.com/hashicorp/raft"
@@ -14,7 +13,6 @@ type fsm struct {
 }
 
 type event struct {
-	Type  string `json:"type"`
 	Key string `json:"key"`
 	Value int `json:"value"`
 }
@@ -31,16 +29,12 @@ func (fsm *fsm) Apply(logEntry *raft.Log) interface{} {
 		panic("Failed unmarshaling Raft log entry. This is a bug.")
 	}
 
-	switch e.Type {
-	case "set":
-		fsm.mutex.Lock()
-		defer fsm.mutex.Unlock()
-		fsm.KV[e.Key] = e.Value
+	fsm.mutex.Lock()
+	defer fsm.mutex.Unlock()
+	fsm.KV[e.Key] = e.Value
 
-		return nil
-	default:
-		panic(fmt.Sprintf("Unrecognized event type in Raft log entry: %s. This is a bug.", e.Type))
-	}
+	return nil
+
 }
 
 func (fsm *fsm) Snapshot() (raft.FSMSnapshot, error) {
