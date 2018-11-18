@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 	"fmt"
+	"net/url"
 	"github.com/hashicorp/raft"
 	"github.com/justinas/alice"
 	"github.com/rs/zerolog"
@@ -43,8 +44,8 @@ func (server *httpServer) Start() {
 }
 
 func (server *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	switch r.URL.Path{
 
+	switch r.URL.Path{
 
 
 	// GET
@@ -116,9 +117,33 @@ func (server *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if server.node.raftNode.State() != raft.Leader{
-			fmt.Println("I need to forward this message")
+			server.logger.Info().Msg("Forwarding Message To Leader")
+			leaderAddr := string(server.node.raftNode.Leader())
+			leaderParsed,err := net.ResolveTCPAddr("tcp", leaderAddr)
+			if err != nil {
+				server.logger.Error().Err(err).Msg("")
+			}
+			url := url.URL{
+				Scheme: "http",
+				Host:   leaderParsed.IP.String() + ":" + fmt.Sprintf("%d", leaderParsed.Port + 1000),
+				Path:   "/set",
+			}
+			req, err := http.NewRequest(http.MethodPost, url.String(), nil)
+			if err != nil {
+				server.logger.Error().Err(err).Msg("")
+			}
+			req.Body = r.Body
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				server.logger.Error().Err(err).Msg("")
+			}
+
+			if resp.StatusCode != http.StatusOK {
+					server.logger.Error().Err(err).Msg(fmt.Sprintf("non 200 status code: %d", resp.StatusCode))
+			}
+			break
 		}
-			request := keyval{}
+		request := keyval{}
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			server.logger.Error().Err(err).Msg("Bad request")
 			w.WriteHeader(http.StatusBadRequest)
