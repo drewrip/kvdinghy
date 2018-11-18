@@ -3,12 +3,10 @@ package main
 import (
 	"fmt"
 	"net"
-	"path/filepath"
 
 	multierror "github.com/hashicorp/go-multierror"
 	template "github.com/hashicorp/go-sockaddr/template"
 	flag "github.com/ogier/pflag"
-	"os"
 )
 
 type RawConfig struct {
@@ -16,7 +14,6 @@ type RawConfig struct {
 	JoinAddress string
 	RaftPort    int
 	HTTPPort    int
-	DataDir     string
 	Bootstrap   bool
 }
 
@@ -24,7 +21,6 @@ type Config struct {
 	RaftAddress net.Addr
 	HTTPAddress net.Addr
 	JoinAddress string
-	DataDir     string
 	Bootstrap   bool
 }
 
@@ -91,23 +87,12 @@ func resolveConfig(rawConfig *RawConfig) (*Config, error) {
 		Port: rawConfig.HTTPPort,
 	}
 
-	// Data directory
-	dataDir, err := filepath.Abs(rawConfig.DataDir)
-	if err != nil {
-		configErr := &ConfigError{
-			ConfigurationPoint: "data-dir",
-			Err:                err,
-		}
-		errors = multierror.Append(errors, configErr)
-	}
-
 	if err := errors.ErrorOrNil(); err != nil {
 		return nil, err
 	}
 
 	return &Config{
-		DataDir:     dataDir,
-		JoinAddress: rawConfig.JoinAddress, //TODO - validate this looks address-like
+		JoinAddress: rawConfig.JoinAddress,
 		RaftAddress: raftAddr,
 		HTTPAddress: httpAddr,
 		Bootstrap:   rawConfig.Bootstrap,
@@ -116,16 +101,6 @@ func resolveConfig(rawConfig *RawConfig) (*Config, error) {
 
 func readRawConfig() *RawConfig {
 	var config RawConfig
-
-	pwd, err := os.Getwd()
-	if err != nil {
-		pwd = "."
-	}
-
-	defaultDataPath := filepath.Join(pwd, "raft")
-
-	flag.StringVarP(&config.DataDir, "data-dir", "d",
-		defaultDataPath, "Path in which to store Raft data")
 
 	flag.StringVarP(&config.BindAddress, "bind-address", "a",
 		"127.0.0.1", "IP Address on which to bind")

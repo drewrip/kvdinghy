@@ -2,17 +2,15 @@ package main
 
 import (
 	"fmt"
-	"io"
 	stdlog "log"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"time"
+	"io"
 
 	"github.com/hashicorp/raft"
-	"github.com/hashicorp/raft-boltdb"
 	"github.com/rs/zerolog"
 )
 
@@ -94,36 +92,20 @@ func NewNode(config *Config, log *zerolog.Logger) (*node, error) {
 		KV: make(map[string]int),
 	}
 
-	if err := os.MkdirAll(config.DataDir, 0700); err != nil {
-		return nil, err
-	}
-
 	raftConfig := raft.DefaultConfig()
-	raftConfig.LocalID = raft.ServerID(config.RaftAddress.String())
+	
 	raftConfig.Logger = stdlog.New(log, "", 0)
+
+	raftConfig.LocalID = raft.ServerID(config.RaftAddress.String())
 	transportLogger := log.With().Str("component", "raft-transport").Logger()
 	transport, err := raftTransport(config.RaftAddress, transportLogger)
-	if err != nil {
-		return nil, err
-	}
+	snapshotStore := raft.NewInmemSnapshotStore()
 
-	snapshotStoreLogger := log.With().Str("component", "raft-snapshots").Logger()
-	snapshotStore, err := raft.NewFileSnapshotStore(config.DataDir, 1, snapshotStoreLogger)
-	if err != nil {
-		return nil, err
-	}
+	logStore := raft.NewInmemStore()
 
-	logStore, err := raftboltdb.NewBoltStore(filepath.Join(config.DataDir, "raft-log.bolt"))
-	if err != nil {
-		return nil, err
-	}
+	stableStore := raft.NewInmemStore()
 
-	stableStore, err := raftboltdb.NewBoltStore(filepath.Join(config.DataDir, "raft-stable.bolt"))
-	if err != nil {
-		return nil, err
-	}
-	raftNode, err := raft.NewRaft(raftConfig, fsm, logStore, stableStore,
-		snapshotStore, transport)
+	raftNode, err := raft.NewRaft(raftConfig, fsm, logStore, stableStore, snapshotStore, transport)
 	if err != nil {
 		return nil, err
 	}
@@ -138,6 +120,7 @@ func NewNode(config *Config, log *zerolog.Logger) (*node, error) {
 		}
 		raftNode.BootstrapCluster(configuration)
 	}
+
 	return &node{
 		config:   config,
 		raftNode: raftNode,

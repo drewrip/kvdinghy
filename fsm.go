@@ -14,9 +14,9 @@ type fsm struct {
 }
 
 type event struct {
-	Type  string
-	Key string
-	Value int
+	Type  string `json:"type"`
+	Key string `json:"key"`
+	Value int `json:"value"`
 }
 
 type keyval struct {
