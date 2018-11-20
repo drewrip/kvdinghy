@@ -99,9 +99,11 @@ func resolveConfig(rawConfig *RawConfig) (*Config, error) {
 	}, nil
 }
 
-func readRawConfig() *RawConfig {
+func readRawConfig() (*RawConfig, bool, int, int) {
 	var config RawConfig
-
+	var test bool
+	var num int
+	var startport int
 	flag.StringVarP(&config.BindAddress, "bind-address", "a",
 		"127.0.0.1", "IP Address on which to bind")
 
@@ -117,6 +119,15 @@ func readRawConfig() *RawConfig {
 	flag.BoolVar(&config.Bootstrap, "bootstrap",
 		false, "Bootstrap the cluster with this node")
 
+	flag.BoolVar(&test, "test",
+		false, "Put Dinghy in test mode")
+
+	flag.IntVarP(&num, "size", "s",
+		7, "Number of nodes in the test Raft cluster")
+
+	flag.IntVarP(&startport, "start-port", "p",
+		7000, "Starting port for test Raft cluster")
+
 	flag.Parse()
-	return &config
+	return &config, test, num, startport
 }

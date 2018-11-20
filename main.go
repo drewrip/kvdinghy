@@ -18,9 +18,9 @@ func main() {
 
 	logger := zerolog.New(os.Stdout)
 
-	rawConfig, test, numnodes := readRawConfig()
+	rawConfig, test, numnodes, sp := readRawConfig()
 	if test{
-		InitCluster(numnodes, 7000)
+		InitCluster(numnodes, sp)
 	}else{
 		config, err := resolveConfig(rawConfig)
 		if err != nil {
